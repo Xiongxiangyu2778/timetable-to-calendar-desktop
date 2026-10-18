@@ -103,8 +103,9 @@ function parseWeeks(text) {
   const t = String(text || '');
   // 兼容三种写法：1-16周 / 1-16(周) / 1-4,6,8,10,12(周)[01-02节]
   let core = t.replace(/\[[^\]]*\]/g, ' ');
-  const m = core.match(/([\d,，\-~至\s]+)[（(]?\s*周/);
+  const m = core.match(/([\d,，\-~至\s]*\d[\d,，\-~至\s]*)[（(]?\s*[单双]?\s*周/);
   if (m) core = m[1];
+  core = core.replace(/[单双]/g, '');
   const parity = /单周?/.test(t) ? 1 : /双周?/.test(t) ? 0 : null;
   const out = new Set();
   core.split(/[,，、\s]+/).forEach(part => {
@@ -185,11 +186,17 @@ async function main() {
     own = true;
   } else {
     browser = await pw.chromium.connectOverCDP('http://127.0.0.1:' + PORT);
-    const pages = browser.contexts()[0].pages();
-    log('已连接浏览器，共 ' + pages.length + ' 个标签页');
+    log('已连接浏览器，共 ' + browser.contexts()[0].pages().length + ' 个标签页');
     log('请在浏览器里打开你的课表页面（能看到 星期一~星期日 那张表）');
     let found = false;
+    let lastCount = -1;
     for (let i = 0; i < WAIT; i += 2) {
+      // 关键：每轮都重新取一次标签页，否则用户新开的页面永远看不到
+      const pages = browser.contexts()[0].pages();
+      if (pages.length !== lastCount) {
+        lastCount = pages.length;
+        log('当前标签页数：' + pages.length);
+      }
       for (const p of pages) {
         for (const f of p.frames()) {
           try {
