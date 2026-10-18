@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+课表_抓取.txt
+测试下载.ics
+线上测试.ics
