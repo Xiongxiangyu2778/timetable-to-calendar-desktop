@@ -23,6 +23,7 @@ import argparse
 import datetime as dt
 import os
 import re
+import shutil
 import sys
 import uuid
 
@@ -312,6 +313,13 @@ def main():
         return 0
 
     content, total = make_ics(start_date, periods, courses)
+    # 覆盖前自动备份，避免误操作把上次的课表冲掉
+    if os.path.exists(args.output):
+        try:
+            shutil.copy2(args.output, args.output + '.bak')
+            log('ℹ 已备份旧文件：%s.bak' % os.path.basename(args.output))
+        except Exception:
+            pass
     with open(args.output, 'w', encoding='utf-8', newline='') as f:
         f.write(content)
     size = os.path.getsize(args.output)
