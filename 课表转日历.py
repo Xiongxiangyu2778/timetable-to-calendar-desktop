@@ -14,9 +14,12 @@
 - 上课前 15 分钟提醒
 
 用法：
-    python 课表转日历.py                 # 读同目录 课表.txt → 生成 我的课表.ics
+    python 课表转日历.py                       # 读同目录 课表.txt → 生成 我的课表.ics
     python 课表转日历.py 我的课表.txt -o 输出.ics
-    python 课表转日历.py --preview       # 只看前两周的安排，不生成文件
+    python 课表转日历.py 教务课表.pdf --start 2026-09-07   # 直接吃 PDF（需 pip install pymupdf）
+    python 课表转日历.py --preview              # 只看前两周的安排，不生成文件
+
+把 PDF 拖到「一键-生成日历.bat」上，等价于第二条命令。
 """
 
 import argparse
@@ -290,27 +293,85 @@ def preview(start_date, periods, courses, days=7):
     log('-' * 52)
 
 
+def load_pdf_courses(path):
+    """PDF 课表 → 课程列表。识别逻辑放在 pdf课表识别.py，和网页版同一套规则。"""
+    try:
+        import pdf课表识别 as rec
+    except ImportError as e:
+        log('✗ 读 PDF 需要先装解析库：pip install pymupdf')
+        log('  （原因：%s）' % e)
+        return None
+    if not rec.has_text(path):
+        log('✗ 这个 PDF 里没有可提取的文字，可能是扫描件 / 图片版。')
+        log('  办法：① 用 WPS「另存为 Excel」→ 再上传网页版；② 粘贴文字到 课表.txt。')
+        return None
+    courses = rec.pdf_courses(path)
+    if not courses:
+        log('⚠ PDF 里读到文字，但没认出课表结构（找不到「星期一…星期日」表头）。')
+        log('  可以先跑：python pdf转表格.py "%s" 看导出的表格对不对。' % path)
+    return courses
+
+
 def main():
     ap = argparse.ArgumentParser(description='课表转 .ics（苹果/安卓通用）')
-    ap.add_argument('input', nargs='?', default=DEFAULT_INPUT, help='课表文本文件（默认 课表.txt）')
+    ap.add_argument('input', nargs='?', default=DEFAULT_INPUT,
+                    help='课表文本文件（默认 课表.txt）；也可以直接给 .pdf')
     ap.add_argument('-o', '--output', default=DEFAULT_OUTPUT, help='输出 .ics（默认 我的课表.ics）')
+    ap.add_argument('--start', default=None,
+                    help='开学第一周周一，如 2026-09-07（PDF 输入必须给，或先有 课表.txt）')
     ap.add_argument('--preview', action='store_true', help='只看预览，不生成文件')
     args = ap.parse_args()
 
     if not os.path.exists(args.input):
         log('✗ 找不到课表文件：%s' % args.input)
-        log('  请把教务系统课表按 示例课表.txt 的格式填好，存成 课表.txt')
+        log('  请把教务系统课表按 课表.txt 的格式填好（同目录有模板）；')
+        log('  或者直接把教务系统导出的 PDF 拖到「一键-生成日历.bat」上。')
         return 2
 
-    start_date, periods, courses = parse_timetable(args.input)
-    if not start_date:
-        log('✗ 缺「学期开始: 2026-02-23」这一行（第一周的周一）')
-        return 2
+    if args.input.lower().endswith('.pdf'):
+        # PDF 里只有课，没有「哪天开学」，所以要另外指定（或沿用 课表.txt 里的那行）
+        courses = load_pdf_courses(args.input)
+        if courses is None:
+            return 2
+        if not courses:
+            return 2
+        periods = dict(DEFAULT_PERIODS)
+        start_date = None
+        if args.start:
+            m = re.match(r'^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$', args.start.strip())
+            if not m:
+                log('✗ --start 格式不对，应该像 2026-09-07')
+                return 2
+            start_date = dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        elif os.path.exists(DEFAULT_INPUT):
+            sd, txt_periods, txt_courses = parse_timetable(DEFAULT_INPUT)
+            if sd:
+                start_date = sd
+                periods = txt_periods
+                log('ℹ 开学日期沿用 课表.txt：%s' % sd.strftime('%Y-%m-%d'))
+        if not start_date:
+            log('✗ PDF 里没有「哪天开学」这条信息。')
+            log('  加一个参数即可：python 课表转日历.py "%s" --start 2026-09-07' % os.path.basename(args.input))
+            try:
+                s = input('  或者现在直接输第一周周一的日期（如 2026-09-07，回车退出）：').strip()
+            except EOFError:
+                s = ''
+            m = re.match(r'^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$', s)
+            if not m:
+                log('  （填你们校历第一周的周一，脚本会按周次自动排到整学期）')
+                return 2
+            start_date = dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    else:
+        start_date, periods, courses = parse_timetable(args.input)
+        if not start_date:
+            log('✗ 缺「学期开始: 2026-02-23」这一行（第一周的周一）')
+            return 2
+
     if start_date.weekday() != 0:
         log('⚠ 学期开始日期不是周一，已自动对齐到当周周一')
         start_date -= dt.timedelta(days=start_date.weekday())
     if not courses:
-        log('✗ 没解析到任何课程，检查每行是否用 | 分隔')
+        log('✗ 没解析到任何课程，检查每行是否用 | 分隔（PDF 则看是不是扫描件）')
         return 2
 
     log('学期开始：%s（周一）' % start_date.strftime('%Y-%m-%d'))

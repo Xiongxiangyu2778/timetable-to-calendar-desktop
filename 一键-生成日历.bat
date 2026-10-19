@@ -11,11 +11,18 @@ if not defined PY set "PY=python"
 
 echo ============================================================
 echo  TIMETABLE TO CALENDAR
-echo  1) fill in the file  课表.txt
-echo  2) this script builds  我的课表.ics
-echo  3) send the ics to your phone, open it with Calendar
+echo  1) fill in the file  课表.txt      (text mode)
+echo  2) OR drag a .pdf timetable onto this .bat file
+echo  3) this script builds  我的课表.ics
+echo  4) send the ics to your phone, open it with Calendar
 echo ============================================================
 echo.
+if /i "%~x1"==".pdf" (
+  %PY% -c "import pymupdf" 2>nul || (
+    echo 第一次处理 PDF，正在安装解析库 pymupdf ...
+    %PY% -m pip install --no-input pymupdf
+  )
+)
 %PY% 课表转日历.py %*
 echo.
 pause
