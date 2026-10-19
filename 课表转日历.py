@@ -228,8 +228,15 @@ def make_ics(start_date, periods, courses, cal_name='我的课表'):
         t_end = periods[p_last][1]
         for w in c['weeks']:
             day = start_date + dt.timedelta(days=(w - 1) * 7 + c['weekday'])
-            ds = day.strftime('%Y%m%d') + 'T' + t_start.replace(':', '') + '00'
-            de = day.strftime('%Y%m%d') + 'T' + t_end.replace(':', '') + '00'
+            # ⚠ 时区修复：以前写「浮点本地时间」（不带 Z），部分手机日历会把它
+            # 当成 UTC 读入 → 全部事件平移 +8 小时，下午的课跨午夜跑到第二天。
+            # 现在显式换算成 UTC（带 Z 后缀），任何日历都会正确换算回北京时间。
+            st = (dt.datetime.combine(day, dt.time(*map(int, t_start.split(':'))))
+                  - dt.timedelta(hours=8))
+            en = (dt.datetime.combine(day, dt.time(*map(int, t_end.split(':'))))
+                  - dt.timedelta(hours=8))
+            ds = st.strftime('%Y%m%dT%H%M%SZ')
+            de = en.strftime('%Y%m%dT%H%M%SZ')
             desc = []
             if c['teacher']:
                 desc.append('教师：' + c['teacher'])
